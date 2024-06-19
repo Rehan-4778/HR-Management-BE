@@ -5,6 +5,7 @@ const ErrorResponse = require("../utils/errorResponse");
 const asyncHandler = require("../middlewares/async");
 // const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
+const EmployeeProfile = require("../models/EmployeeProfile");
 
 // @description       Register company and make admin user
 // @route             POST  api/v1/auth/register
@@ -15,13 +16,25 @@ exports.register = asyncHandler(async (req, res, next) => {
     lastName,
     email,
     password,
+    phone,
     jobTitle,
     companyName,
-    phone,
     employeeCount,
     country,
     domain,
   } = req.body;
+
+  let user = await User.findOne({ email });
+
+  if (user) {
+    const isMatch = await user.matchPassword(password);
+
+    if (!isMatch) {
+      return next(
+        new ErrorResponse("Incorrect password for existing user", 400)
+      );
+    }
+  }
 
   const existingCompany = await Company.findOne({
     domain,
@@ -42,52 +55,68 @@ exports.register = asyncHandler(async (req, res, next) => {
   });
 
   const role = await Role.findOne({ name: "admin" });
-  // Create user
-  const user = await User.create({
+  // Create employee profile
+  const employeeProfile = await EmployeeProfile.create({
     firstName,
     lastName,
     email,
-    password,
     jobTitle,
-    phone,
-    role: role._id,
     company: company._id,
   });
 
-  // send token response
-  sendTokenResponse(user, 200, `Account has been created successfully.`, res);
+  if (!user) {
+    // Create user
+    user = await User.create({
+      firstName,
+      lastName,
+      email,
+      password,
+      phone,
+      companies: [
+        {
+          company: company._id,
+          role: role._id,
+          profile: employeeProfile._id,
+        },
+      ],
+    });
+  } else {
+    user.companies.push({
+      company: company._id,
+      role: role._id,
+      profile: employeeProfile._id,
+    });
+
+    await user.save();
+  }
+
+  // send user without password
+  user = await User.findById(user._id).select("-password");
+
+  sendTokenResponse(
+    user,
+    role._id,
+    200,
+    `Account has been created successfully.`,
+    res
+  );
 });
 
 // @description       Login user
-// @route             POST  api/v1/auth/:domain/login
+// @route             POST  api/v1/auth/login
 // @access            Public
 exports.login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
-  const domain = req.params.domain;
 
   // Validate email and password
   if (!email || !password) {
     return next(new ErrorResponse("Please provide an email and password", 400));
   }
 
-  if (!domain) {
-    return next(new ErrorResponse("Please provide a domain", 400));
-  }
-
-  // Check for company
-  const company = await Company.findOne({
-    domain,
-  });
-
-  if (!company) {
-    return next(new ErrorResponse("Invalid domain", 400));
-  }
-
   // Check for user
   const user = await User.findOne({
     email,
-    company: company._id,
-  }).select("+password");
+  });
 
   if (!user) {
     return next(new ErrorResponse("Invalid credentials", 401));
@@ -100,13 +129,47 @@ exports.login = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Invalid credentials", 401));
   }
 
-  // send token response
-  sendTokenResponse(user, 200, `Login successful.`, res);
+  const companies = await Company.find({
+    _id: { $in: user.companies.map((c) => c.company) },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Logged in successfully.",
+    companies,
+  });
+});
+
+// @description       Select company
+// @route             POST  api/v1/auth/selectcompany
+// @access            Private
+exports.selectCompany = asyncHandler(async (req, res, next) => {
+  const { companyId } = req.body;
+
+  const user = await User.findById(req.user.id);
+
+  if (!user) {
+    return next(new ErrorResponse("User not found", 404));
+  }
+
+  const companyRole = user.companies.find((c) => c.company.equals(companyId));
+
+  if (!companyRole) {
+    return next(new ErrorResponse("Company not found for ", 404));
+  }
+
+  sendTokenResponse(
+    user,
+    companyRole.role,
+    200,
+    `Company selected successfully.`,
+    res
+  );
 });
 
 // @description       Send Token
-const sendTokenResponse = (user, statusCode, message, res) => {
-  const token = user.getSignedJwtToken();
+const sendTokenResponse = (user, role, statusCode, message, res) => {
+  const token = user.getSignedJwtToken(role);
 
   // set cookie options
   const options = {
