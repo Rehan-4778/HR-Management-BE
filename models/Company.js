@@ -5,7 +5,7 @@ const CompanySchema = new Schema(
   {
     name: { type: String, required: true },
     domain: { type: String, required: true, unique: true },
-    employeeCount: { type: Number, required: true },
+    employeeCount: { type: String, required: true },
     country: { type: String, required: true },
   },
   { timestamps: true }
