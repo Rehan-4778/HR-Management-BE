@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const { profile } = require("console");
 
 const Schema = mongoose.Schema;
 
@@ -23,42 +24,36 @@ const UserSchema = new Schema({
     type: String,
     required: true,
   },
-  jobTitle: {
-    type: String,
-    required: true,
-  },
-  company: {
-    type: Schema.Types.ObjectId,
-    ref: "Company",
-  },
   phone: {
     type: String,
     required: true,
   },
-  role: {
-    type: Schema.Types.ObjectId,
-    ref: "Role",
-  },
-  address: {
-    type: String,
-    // required: true
-  },
-  city: {
-    type: String,
-    // required: true
-  },
-  state: {
-    type: String,
-    // required: true
-  },
-  zip: {
-    type: String,
-    // required: true
-  },
-  country: {
-    type: String,
-    // required: true
-  },
+
+  companies: [
+    {
+      company: {
+        type: Schema.Types.ObjectId,
+        ref: "Company",
+      },
+      role: {
+        type: Schema.Types.ObjectId,
+        ref: "Role",
+      },
+      profile: {
+        type: Schema.Types.ObjectId,
+        ref: "EmployeeProfile",
+      },
+      isActive: {
+        type: Boolean,
+        default: true,
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+  ],
+
   isActive: {
     type: Boolean,
     default: true,
@@ -84,8 +79,8 @@ UserSchema.pre("save", async function (next) {
 });
 
 // Sign JWT and return
-UserSchema.methods.getSignedJwtToken = function () {
-  return jwt.sign({ id: this._id, role: this.role }, process.env.JWT_SECRET, {
+UserSchema.methods.getSignedJwtToken = function (role) {
+  return jwt.sign({ id: this._id, role: role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE,
   });
 };
