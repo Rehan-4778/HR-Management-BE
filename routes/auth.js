@@ -15,7 +15,6 @@ router.route("/register").post(register);
 router.route("/login").post(login);
 router.route("/selectcompany").post(protect, selectCompany);
 router.route("/addEmployee").post(addEmployee);
-router.route("/sendOnboardingInvite").post(sendOnboardingInvite);
 router.route("/logout").get(logout);
 // router.route("/me").get(protect, getMe);
 // router.route("/updatedetails").put(protect, updateDetails);

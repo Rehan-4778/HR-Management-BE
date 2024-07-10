@@ -96,7 +96,6 @@ exports.register = asyncHandler(async (req, res, next) => {
   sendTokenResponse(
     user,
     user.companies,
-    role._id,
     200,
     `Account has been created successfully.`,
     res
@@ -134,19 +133,7 @@ exports.login = asyncHandler(async (req, res, next) => {
     _id: { $in: user.companies.map((c) => c.company) },
   });
 
-  sendTokenResponse(
-    user,
-    companies,
-    user.companies[0].role,
-    200,
-    "Logged in successfully.",
-    res
-  );
-  // res.status(200).json({
-  //   success: true,
-  //   message: "Logged in successfully.",
-  //   companies,
-  // });
+  sendTokenResponse(user, companies, 200, "Logged in successfully.", res);
 });
 
 // @description       Select company
@@ -299,132 +286,6 @@ exports.addEmployee = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @description       Send Onboarding Invite
-// @route             POST  api/v1/auth/sendOnboardingInvite
-// @access            Private
-
-exports.sendOnboardingInvite = asyncHandler(async (req, res, next) => {
-  const { email, companyId, employeeId } = req.body;
-  const clientUrl = process.env.Client_URL;
-
-  const company = await Company.findById(companyId);
-
-  if (!company) {
-    return next(new ErrorResponse("Company not found", 404));
-  }
-
-  const employeeProfile = await EmployeeProfile.findOne({
-    company: companyId,
-    employeeId,
-  });
-
-  if (!employeeProfile) {
-    return next(new ErrorResponse("Employee not found", 404));
-  }
-
-  // generate an onboarding token
-  const onboardingToken = crypto.randomBytes(20).toString("hex");
-  const hashedOnboardingToken = crypto
-    .createHash("sha256")
-    .update(onboardingToken)
-    .digest("hex");
-
-  employeeProfile.onboardingToken = hashedOnboardingToken;
-  employeeProfile.onboardingTokenExpires = Date.now() + 24 * 60 * 60 * 1000; // 1 day to expire
-
-  await employeeProfile.save();
-
-  // send onboarding email
-  const message = `You are receiving this email because you (or someone else) has requested to onboard you to ${company.name}.\n\n Please click on the following link to complete the onboarding process:\n\n${clientUrl}/onboarding/${hashedOnboardingToken}\n\n If you did not request this, please ignore this email.`;
-
-  const options = {
-    email,
-    subject: "Onboarding Invite from " + company.name + " Company",
-    message,
-  };
-
-  try {
-    await sendEmail(options);
-
-    res.status(200).json({
-      success: true,
-      message: "Onboarding email sent successfully.",
-    });
-  } catch (error) {
-    console.log(error);
-    employeeProfile.onboardingToken = undefined;
-    employeeProfile.onboardingTokenExpires = undefined;
-
-    await employeeProfile.save();
-
-    return next(new ErrorResponse("Email could not be sent", 500));
-  }
-});
-
-// @description       Onboard Register
-// @route             POST  api/v1/auth/onboardRegister
-// @access            Public
-
-exports.onboardRegister = asyncHandler(async (req, res, next) => {
-  const { firstName, lastName, email, password, phone, onboardingToken } =
-    req.body;
-
-  if (!onboardingToken) {
-    return next(new ErrorResponse("Invalid token", 400));
-  }
-
-  const hashedToken = crypto
-    .createHash("sha256")
-    .update(onboardingToken)
-    .digest("hex");
-
-  const employeeProfile = await EmployeeProfile.findOne({
-    onboardingToken: hashedToken,
-    onboardingTokenExpires: { $gt: Date.now() },
-  });
-
-  if (!employeeProfile) {
-    return next(new ErrorResponse("Invalid token", 400));
-  }
-
-  const user = await User.findOne({
-    email,
-  });
-
-  if (user) {
-    return next(new ErrorResponse("User already exists", 400));
-  }
-
-  const role = await Role.findOne({ name: "employee" });
-
-  // Create user
-  user = await User.create({
-    firstName,
-    lastName,
-    email,
-    password,
-    phone,
-    companies: [
-      {
-        company: employeeProfile.company,
-        role: role._id,
-        profile: employeeProfile._id,
-      },
-    ],
-  });
-
-  // send user without password
-  user = await User.findById(user._id).select("-password");
-
-  sendTokenResponse(
-    user,
-    role._id,
-    200,
-    `Account has been created successfully.`,
-    res
-  );
-});
-
 // @description       Logout user
 // @route             GET  api/v1/auth/logout
 // @access            Private
@@ -441,8 +302,8 @@ exports.logout = asyncHandler(async (req, res, next) => {
 });
 
 // @description       Send Token
-const sendTokenResponse = (user, companies, role, statusCode, message, res) => {
-  const token = user.getSignedJwtToken(role);
+const sendTokenResponse = (user, companies, statusCode, message, res) => {
+  const token = user.getSignedJwtToken();
 
   // set cookie options
   const options = {
