@@ -33,6 +33,7 @@ if (process.env.NODE_ENV === "development") {
 
 // Mount Routers
 app.use("/api/v1/auth", auth);
+app.use("/api/v1/onboard", require("./routes/onboard"));
 app.use("/api/v1/roles", require("./routes/roles"));
 
 // Error handler
