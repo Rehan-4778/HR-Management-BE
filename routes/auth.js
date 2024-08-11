@@ -7,7 +7,6 @@ const {
   selectCompany,
   logout,
   addEmployee,
-  sendOnboardingInvite,
 } = require("../controllers/auth");
 const { protect } = require("../middlewares/auth");
 

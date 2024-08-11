@@ -197,15 +197,18 @@ exports.acceptOnboardingInvite = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("User not found", 404));
   }
 
-  // this is user.companies
-  //   companies: [
-  //     {
-  //       company: company._id,
-  //       role: role._id,
-  //       profile: employeeProfile._id,
-  //     },
-  //   ],
+  // get leave policy of this company and assign to employee
+  const company = await Company.findById(employeeProfile.company);
 
+  if (!company) {
+    return next(new ErrorResponse("Company not found", 404));
+  }
+
+  employeeProfile.leavePolicy = company.leavePolicy;
+  employeeProfile.leaveBalances = company.leaveTypes.map((leaveType) => ({
+    leaveType: leaveType._id,
+    remainingHours: leaveType.defaultHours,
+  }));
   employeeProfile.onboardingToken = undefined;
   employeeProfile.onboardingTokenExpires = undefined;
 
@@ -213,7 +216,7 @@ exports.acceptOnboardingInvite = asyncHandler(async (req, res, next) => {
 
   user.companies.push({
     company: employeeProfile.company,
-    role: employeeProfile.role,
+    role: employeeProfile?.role,
     profile: employeeProfile._id,
   });
 
