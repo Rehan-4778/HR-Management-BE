@@ -5,6 +5,7 @@ const colors = require("colors");
 const morgan = require("morgan");
 const cors = require("cors");
 const errorHandler = require("./middlewares/error");
+const bodyParser = require("body-parser");
 
 // Route files
 const auth = require("./routes/auth");
@@ -19,9 +20,18 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use("/uploads", express.static("uploads"));
+app.use(
+  bodyParser.json({
+    limit: "50mb",
+  })
+);
+app.use(
+  bodyParser.urlencoded({
+    limit: "50mb",
+    extended: true,
+  })
+);
+app.use(cors());
 
 // Enable CORS
 app.use(cors());
@@ -35,6 +45,10 @@ if (process.env.NODE_ENV === "development") {
 app.use("/api/v1/auth", auth);
 app.use("/api/v1/onboard", require("./routes/onboard"));
 app.use("/api/v1/roles", require("./routes/roles"));
+app.use("/api/v1/employee", require("./routes/employee"));
+app.use("/api/v1/timeLog", require("./routes/timeLog"));
+app.use("/api/v1/timeOff", require("./routes/timeOff"));
+app.use("/api/v1/setting", require("./routes/setting"));
 
 // Error handler
 app.use(errorHandler);

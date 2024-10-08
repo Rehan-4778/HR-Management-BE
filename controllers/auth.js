@@ -6,6 +6,10 @@ const asyncHandler = require("../middlewares/async");
 const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
 const EmployeeProfile = require("../models/EmployeeProfile");
+const LeaveType = require("../models/LeaveType");
+const LeavePolicy = require("../models/LeavePolicy");
+const EmployeeFields = require("../models/EmployeeFields");
+const constants = require("../constants/employeeFieldsConst");
 
 // @description       Register company and make admin user
 // @route             POST  api/v1/auth/register
@@ -46,23 +50,65 @@ exports.register = asyncHandler(async (req, res, next) => {
     );
   }
 
+  const defaultPermissions = {
+    informationUpdates: { approver: "manager" },
+    timeOffRequests: { approver: "manager" },
+    employmentStatus: { approver: "manager" },
+    jobInformation: { approver: "manager" },
+    promotion: { approver: "manager" },
+    assetRequest: { approver: "manager" },
+  };
+
   // Create company
   const company = await Company.create({
     name: companyName,
     domain,
     employeeCount,
     country,
+    permissions: defaultPermissions,
   });
 
-  const role = await Role.findOne({ name: "admin" });
-  // Create employee profile
-  const employeeProfile = await EmployeeProfile.create({
-    firstName,
-    lastName,
-    email,
-    jobTitle,
+  // Create leave policy
+  const leaveTypes = await LeaveType.insertMany([
+    { name: "Sick", defaultHours: 56 },
+    { name: "Vacation", defaultHours: 56 },
+    { name: "Bereavement" },
+    { name: "Paternity" },
+  ]);
+
+  const leavePolicy = new LeavePolicy({
+    company: company._id,
+    name: "Fixed Policy",
+    leaveTypes: leaveTypes.map((leaveType) => leaveType._id),
+  });
+  await leavePolicy.save();
+
+  let empCount = await EmployeeProfile.countDocuments({
     company: company._id,
   });
+
+  let newEmployeeId = empCount + 1;
+
+  const role = await Role.findOne({ name: "owner" });
+  // Create employee profile
+  const employeeProfile = await EmployeeProfile.create({
+    employeeId: newEmployeeId,
+    firstName,
+    lastName,
+    workEmail: email,
+    mobilePhone: phone,
+    jobTitle,
+    company: company._id,
+    jobInformation: [{ effectiveDate: Date.now(), jobTitle }],
+    loginAccess: true,
+    leavePolicy: leavePolicy._id,
+    leaveBalances: leaveTypes.map((leaveType) => ({
+      leaveType: leaveType._id,
+      remainingHours: leaveType.defaultHours,
+    })),
+  });
+
+  console.log(employeeProfile, "employeeProfile");
 
   if (!user) {
     // Create user
@@ -86,16 +132,33 @@ exports.register = asyncHandler(async (req, res, next) => {
       role: role._id,
       profile: employeeProfile._id,
     });
-
-    await user.save();
   }
+  await user.save();
+
+  console.log(user, "user");
+
+  // Create EmployeeFields
+  await EmployeeFields.create({
+    company: company._id,
+    degree: constants.degree,
+    department: constants.department,
+    division: constants.division,
+    employmentStatus: constants.employmentStatus,
+    jobTitle: constants.jobTitle,
+    visaType: constants.visaType,
+    assetCategory: constants.assetCategory,
+  });
 
   // send user without password
   user = await User.findById(user._id).select("-password");
 
+  const companies = await Company.find({
+    _id: { $in: user.companies.map((c) => c.company) },
+  });
+
   sendTokenResponse(
     user,
-    user.companies,
+    companies,
     200,
     `Account has been created successfully.`,
     res
@@ -114,7 +177,7 @@ exports.login = asyncHandler(async (req, res, next) => {
   }
 
   // Check for user
-  const user = await User.findOne({
+  let user = await User.findOne({
     email,
   });
 
@@ -133,6 +196,11 @@ exports.login = asyncHandler(async (req, res, next) => {
     _id: { $in: user.companies.map((c) => c.company) },
   });
 
+  // remove password and company from user object
+  user = await User.findOne({
+    email,
+  }).select("-password");
+
   sendTokenResponse(user, companies, 200, "Logged in successfully.", res);
 });
 
@@ -142,16 +210,22 @@ exports.login = asyncHandler(async (req, res, next) => {
 exports.selectCompany = asyncHandler(async (req, res, next) => {
   const { companyId } = req.body;
 
+  console.log("companyId", companyId);
+  console.log("userID", req.user.id);
+
   if (!req.user.id) {
     return next(new ErrorResponse("User not found", 404));
   }
 
   const user = await User.findById(req.user.id);
+  console.log(user, "user");
+  console.log(companyId, "companyId");
 
   if (!user) {
     return next(new ErrorResponse("User not found", 404));
   }
 
+  console.log(user.companies);
   const userCompany = user.companies.find((c) => c.company.equals(companyId));
 
   if (!userCompany) {
@@ -168,7 +242,18 @@ exports.selectCompany = asyncHandler(async (req, res, next) => {
       path: `companies.${user.companies.indexOf(userCompany)}.company`,
       model: "Company",
     },
+    {
+      path: `companies.${user.companies.indexOf(userCompany)}.profile`,
+      model: "EmployeeProfile",
+      select: "employeeId loginAccess firstName lastName jobInformation image",
+    },
   ]);
+
+  if (userCompany.profile.loginAccess === false) {
+    return next(
+      new ErrorResponse("You are not allowed to login to this company", 403)
+    );
+  }
 
   res.status(200).json({
     success: true,
@@ -198,16 +283,16 @@ exports.addEmployee = asyncHandler(async (req, res, next) => {
     state,
     zip,
     country,
+    secondaryLanguage,
+    hiringDate,
     paySchedule,
     payType,
     payRate,
     payRateUnit,
-    ethnicity,
     workPhone,
     mobilePhone,
     workEmail,
     homeEmail,
-    hiringDate,
     employmentStatus,
     jobTitle,
     reportsTo,
@@ -244,6 +329,47 @@ exports.addEmployee = asyncHandler(async (req, res, next) => {
     newEmployeeId = employeeCount + 1;
   }
 
+  let manager;
+  if (reportsTo) {
+    const isManagerExist = await EmployeeProfile.findOne({
+      company: companyId,
+      _id: reportsTo,
+    });
+
+    if (!isManagerExist) {
+      return next(new ErrorResponse("Manager not found", 404));
+    }
+
+    manager = reportsTo;
+  } else {
+    // get the owner of the company as the manager
+    const ownerRole = await Role.findOne({ name: "owner" });
+    const owner = await User.findOne({
+      "companies.company": companyId,
+      "companies.role": ownerRole._id,
+    });
+
+    if (!owner) {
+      return next(new ErrorResponse("Owner not found", 404));
+    }
+
+    const ownerProfile = owner.companies.find((c) =>
+      c.company.equals(companyId)
+    ).profile;
+
+    if (!ownerProfile) {
+      return next(
+        new ErrorResponse("Owner profile not found for this company", 404)
+      );
+    }
+
+    manager = ownerProfile;
+  }
+
+  const leavePolicy = await LeavePolicy.findOne({
+    company: companyId,
+  });
+
   const employeeProfile = await EmployeeProfile.create({
     employeeId: newEmployeeId,
     firstName,
@@ -259,24 +385,49 @@ exports.addEmployee = asyncHandler(async (req, res, next) => {
     state,
     zip,
     country,
-    paySchedule,
-    payType,
-    payRate,
-    payRateUnit,
-    ethnicity,
+    hiringDate,
     workPhone,
     mobilePhone,
     workEmail,
     homeEmail,
-    hiringDate,
-    employmentStatus,
-    jobTitle,
-    reportsTo,
-    department,
-    division,
-    location,
     loginAccess,
     company: companyId,
+
+    jobInformation: [
+      {
+        effectiveDate: hiringDate,
+        location,
+        division,
+        department,
+        jobTitle,
+        reportsTo: manager,
+      },
+    ],
+    employmentStatusHistory: [
+      {
+        effectiveDate: hiringDate,
+        employmentStatus,
+        comment: "N/A",
+      },
+    ],
+
+    compensationHistory: [
+      {
+        effectiveDate: hiringDate,
+        paySchedule,
+        payType,
+        payRate,
+        payRateUnit,
+        changeReason: "N/A",
+        comment: "N/A",
+      },
+    ],
+
+    leavePolicy: leavePolicy._id,
+    leaveBalances: leavePolicy.leaveTypes.map((leaveType) => ({
+      leaveType: leaveType,
+      remainingHours: leaveType.defaultHours,
+    })),
   });
 
   res.status(200).json({
