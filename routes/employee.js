@@ -13,6 +13,7 @@ const {
   updatePersonalInfo,
   createFolder,
   uploadFile,
+  deleteFile,
   changeFolderAccessibility,
   getFoldersAndFiles,
   uploadProfilePicture,
@@ -53,6 +54,11 @@ router.route("/:employeeId/folders").post(protect, createFolder);
 router
   .route("/:employeeId/folders/:folderId/files")
   .post(protect, upload.single("file"), uploadFile);
+
+router
+  .route("/:employeeId/folders/:folderId/files/:fileId")
+  .delete(protect, deleteFile);
+
 router
   .route("/:employeeId/folders/:folderId/accessibility")
   .put(protect, changeFolderAccessibility);

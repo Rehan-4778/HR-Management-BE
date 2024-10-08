@@ -501,6 +501,61 @@ exports.uploadFile = asyncHandler(async (req, res, next) => {
   });
 });
 
+//
+exports.deleteFile = asyncHandler(async (req, res, next) => {
+  const { employeeId, folderId, fileId } = req.params;
+  const { companyId } = req.body;
+  const userId = req.user.id;
+
+  const user = await User.findOne({
+    _id: userId,
+    "companies.company": companyId,
+  });
+
+  const uploaderProfile = user.companies.find((c) =>
+    c.company.equals(companyId)
+  ).profile;
+
+  console.log(uploaderProfile);
+
+  if (!user) {
+    return next(new ErrorResponse("User is not part of this company", 401));
+  }
+
+  const employee = await EmployeeProfile.findOne({
+    employeeId,
+    company: companyId,
+  });
+
+  if (!employee) {
+    return next(new ErrorResponse("Employee not found", 404));
+  }
+
+  const isFolderExist = employee.documents.find((f) => f._id.equals(folderId));
+
+  const folder = await Folder.findById(folderId);
+
+  if (!isFolderExist || !folder) {
+    return next(new ErrorResponse("Folder not found", 404));
+  }
+  const file = await File.findById(fileId);
+  if (!file) {
+    return next(new ErrorResponse("File not found", 404));
+  }
+
+  console.log(folder);
+
+  folder.files = folder.files.filter((f) => !f.equals(fileId));
+  await folder.save();
+
+  await File.findByIdAndDelete(fileId);
+
+  res.status(200).json({
+    success: true,
+    message: "File deleted successfully",
+  });
+});
+
 // description       Change folder accessibility
 // route             PUT  api/v1/employee/:employeeId/folders/:folderId/accessibility
 // access            Private
@@ -595,9 +650,10 @@ exports.getFoldersAndFiles = asyncHandler(async (req, res, next) => {
         : true
       : false;
 
-  const isOwner = user.companies
-    .find((c) => c.company.equals(companyId))
-    ?.role?.equals(ownerRole._id) || false;
+  const isOwner =
+    user.companies
+      .find((c) => c.company.equals(companyId))
+      ?.role?.equals(ownerRole._id) || false;
 
   console.log(isOwner, "isOwner");
 
