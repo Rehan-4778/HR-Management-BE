@@ -6,6 +6,7 @@ const morgan = require("morgan");
 const cors = require("cors");
 const errorHandler = require("./middlewares/error");
 const bodyParser = require("body-parser");
+const path = require("path");
 
 // Route files
 const auth = require("./routes/auth");
@@ -41,6 +42,8 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
+app.use(express.static(path.join(__dirname, "../HR-Management-FE/dist/")));
+
 // Mount Routers
 app.use("/api/v1/auth", auth);
 app.use("/api/v1/onboard", require("./routes/onboard"));
@@ -49,6 +52,10 @@ app.use("/api/v1/employee", require("./routes/employee"));
 app.use("/api/v1/timeLog", require("./routes/timeLog"));
 app.use("/api/v1/timeOff", require("./routes/timeOff"));
 app.use("/api/v1/setting", require("./routes/setting"));
+
+app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "../HR-Management-FE/dist/", "index.html"));
+});
 
 // Error handler
 app.use(errorHandler);
