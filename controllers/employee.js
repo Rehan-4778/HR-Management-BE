@@ -54,6 +54,11 @@ exports.getCompanyEmployees = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("User is not part of this company", 401));
   }
 
+  let userCompany = user.companies.find((c) => c.company.equals(companyId));
+  const owner = await Role.findOne({ name: "owner" });
+
+  const isOwner = userCompany.role.equals(owner._id);
+
   let employees = await EmployeeProfile.find({
     company: companyId,
   });
@@ -71,7 +76,65 @@ exports.getCompanyEmployees = asyncHandler(async (req, res, next) => {
   }
   res.status(200).json({
     success: true,
+    isOwner,
     data: employees,
+  });
+});
+
+// @description       Delete company employee
+// @route             DELETE  api/v1/employee/deleteEmployee/:employeeId
+// @access            Private
+exports.deleteCompanyEmployee = asyncHandler(async (req, res, next) => {
+  const userId = req.user.id;
+  const employeeId = req.params.employeeId;
+  const { companyId } = req.body;
+
+  const user = await User.findOne({
+    _id: userId,
+    "companies.company": companyId,
+  });
+
+  if (!user) {
+    return next(new ErrorResponse("User is not part of this company", 401));
+  }
+
+  const employee = await EmployeeProfile.findOne({
+    employeeId,
+    company: companyId,
+  });
+
+  if (!employee) {
+    return next(new ErrorResponse("Employee not found", 404));
+  }
+
+  let userCompany = user.companies.find((c) => c.company.equals(companyId));
+  const owner = await Role.findOne({ name: "owner" });
+
+  if (!userCompany.role.equals(owner._id)) {
+    return next(
+      new ErrorResponse("You are not allowed to delete Employee", 404)
+    );
+  }
+
+  if (userCompany.profile.equals(employee._id)) {
+    return next(new ErrorResponse("You can't delete owner of company", 404));
+  }
+
+  const result = await EmployeeProfile.updateMany(
+    { "jobInformation.0.reportsTo": employee._id },
+    { $set: { "jobInformation.0.reportsTo": owner._id } }
+  );
+
+  await EmployeeProfile.deleteOne({ _id: employee._id });
+  await User.updateMany(
+    { "companies.company": companyId, profile: employee._id },
+    { $pull: { companies: { profile: employee._id } } }
+  );
+
+  res.status(200).json({
+    success: true,
+    message: "Employee deleted successfully.",
+    updatedReportsTo: result.modifiedCount,
   });
 });
 
@@ -853,6 +916,44 @@ exports.createSignatureRequest = asyncHandler(async (req, res, next) => {
   res.status(201).json({
     success: true,
     data: notification,
+  });
+});
+
+// description       Get and files of employee and employees under him/her
+// route             GET api/v1/employee/:employeeId/:companyId/allFoldersAndFiles
+// access            Private
+exports.getAllFiles = asyncHandler(async (req, res, next) => {
+  const { companyId } = req.params;
+  const userId = req.user.id;
+
+  // Fetch user profile
+  const user = await User.findOne({
+    _id: userId,
+    "companies.company": companyId,
+  });
+
+  if (!user) {
+    return next(new ErrorResponse("User is not part of this company", 401));
+  }
+
+  const userProfile = user.companies.find((c) =>
+    c.company.equals(companyId)
+  ).profile;
+
+  // Fetch all folders created by or created for the userProfile
+  const folders = await Folder.find({
+    $or: [{ createdBy: userProfile }, { createdFor: userProfile }],
+  }).populate({
+    path: "files",
+    populate: {
+      path: "uploadedBy",
+      select: "firstName lastName image",
+    },
+  });
+
+  res.status(200).json({
+    success: true,
+    data: folders,
   });
 });
 

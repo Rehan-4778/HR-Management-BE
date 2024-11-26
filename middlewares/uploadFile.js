@@ -37,7 +37,7 @@ const upload = multer({
       cb(null, `${Date.now().toString()}-${file.originalname}`);
     },
   }),
-  limits: { fileSize: 330000000 }, // 20 MB
+  limits: { fileSize: 330000000 },
   fileFilter: function (req, file, cb) {
     checkFileType(file, cb);
   },
