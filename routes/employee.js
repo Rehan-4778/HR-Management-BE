@@ -6,6 +6,7 @@ const upload = require("../middlewares/uploadFile");
 const {
   getCompanyEmployeesNames,
   getCompanyEmployees,
+  deleteCompanyEmployee,
   getEmployeeInfo,
   addEmployeeField,
   updateEmployeeField,
@@ -20,6 +21,7 @@ const {
   getSignableFiles,
   createSignatureRequest,
   getNotifications,
+  getAllFiles,
 } = require("../controllers/employee");
 const { protect } = require("../middlewares/auth");
 
@@ -30,6 +32,10 @@ router
 router
   .route("/getCompanyEmployees/:companyId")
   .get(protect, getCompanyEmployees);
+
+router
+  .route("/deleteEmployee/:employeeId")
+  .delete(protect, deleteCompanyEmployee);
 
 router.route("/:employeeId/info").get(protect, getEmployeeInfo);
 
@@ -54,6 +60,8 @@ router.route("/:employeeId/folders").post(protect, createFolder);
 router
   .route("/:employeeId/folders/:folderId/files")
   .post(protect, upload.single("file"), uploadFile);
+
+router.route("/:companyId/allFoldersAndFiles").get(protect, getAllFiles);
 
 router
   .route("/:employeeId/folders/:folderId/files/:fileId")
