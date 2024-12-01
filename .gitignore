@@ -90,3 +90,6 @@ build/
 # Temporary files
 tmp/
 temp/
+
+# Local Netlify folder
+.netlify

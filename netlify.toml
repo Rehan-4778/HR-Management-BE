@@ -1,0 +1,8 @@
+[build]
+  functions = "functions"
+  publish = "HR-Management-FE/dist"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/server/:splat"
+  status = 200
