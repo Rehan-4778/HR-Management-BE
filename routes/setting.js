@@ -11,6 +11,10 @@ const {
   updateCompanyInfo,
   getCompanyPermissions,
   updateCompanyPermissions,
+  addHoliday,
+  getHolidays,
+  updateHoliday,
+  deleteHoliday,
 } = require("../controllers/setting");
 const { protect } = require("../middlewares/auth");
 
@@ -31,4 +35,10 @@ router
   .get(protect, getCompanyPermissions)
   .put(protect, updateCompanyPermissions);
 
+router.route("/holidays").post(protect, addHoliday);
+router.route("/holidays/:companyId").get(protect, getHolidays);
+router
+  .route("/holidays/:holidayId")
+  .put(protect, updateHoliday)
+  .delete(protect, deleteHoliday);
 module.exports = router;
