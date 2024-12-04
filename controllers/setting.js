@@ -5,6 +5,7 @@ const asyncHandler = require("../middlewares/async");
 const EmployeeProfile = require("../models/EmployeeProfile");
 const Company = require("../models/Company");
 const EmployeeFields = require("../models/EmployeeFields");
+const Holiday = require("../models/Holiday");
 
 // @desc      Get employee fields for company
 // @route     GET /api/v1/setting/companyEmployeeFields/:companyId
@@ -438,4 +439,96 @@ exports.updateCompanyPermissions = asyncHandler(async (req, res, next) => {
   await company.save();
 
   res.status(200).json({ success: true, data: company.permissions });
+});
+
+// desc     Add Holiday for company
+// @route   POST /api/v1/setting/holidays
+// @access  Private
+exports.addHoliday = asyncHandler(async (req, res, next) => {
+  const { name, date, description, isRecurring, companyId } = req.body;
+  const userId = req.user.id;
+
+  // Check if the user is authorized to add holidays for the company
+  const user = await User.findOne({
+    _id: userId,
+    "companies.company": companyId,
+  });
+
+  if (!user) {
+    return next(
+      new ErrorResponse("You are not authorized to manage holidays", 403)
+    );
+  }
+
+  const holiday = await Holiday.create({
+    name,
+    date,
+    description,
+    isRecurring,
+    companyId,
+    // createdBy: userId,
+  });
+
+  res.status(201).json({
+    success: true,
+    message: "Holiday created successfully",
+    data: holiday,
+  });
+});
+
+// desc     Get Holidays for company
+// @route   GET /api/v1/setting/holidays/:companyId
+// @access  Private
+exports.getHolidays = asyncHandler(async (req, res, next) => {
+  const { companyId } = req.params;
+
+  const holidays = await Holiday.find({ companyId });
+
+  res.status(200).json({
+    success: true,
+    data: holidays,
+  });
+});
+
+// desc     Update Holidays
+// @route   PUT /api/v1/setting/holidays/:holidayId
+// @access  Private
+exports.updateHoliday = asyncHandler(async (req, res, next) => {
+  const { holidayId } = req.params;
+  const { name, date, description, isRecurring } = req.body;
+
+  const holiday = await Holiday.findById(holidayId);
+
+  if (!holiday) {
+    return next(new ErrorResponse("Holiday not found", 404));
+  }
+
+  Object.assign(holiday, { name, date, description, isRecurring });
+  await holiday.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Holiday updated successfully",
+    data: holiday,
+  });
+});
+
+// desc     Delete Holiday
+// @route   PUT /api/v1/setting/holidays/:holidayId
+// @access  Private
+exports.deleteHoliday = asyncHandler(async (req, res, next) => {
+  const { holidayId } = req.params;
+
+  const holiday = await Holiday.findById(holidayId);
+
+  if (!holiday) {
+    return next(new ErrorResponse("Holiday not found", 404));
+  }
+
+  await holiday.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: "Holiday removed successfully",
+  });
 });
