@@ -22,6 +22,7 @@ const {
   createSignatureRequest,
   getNotifications,
   getAllFiles,
+  getOrganizationChart,
 } = require("../controllers/employee");
 const { protect } = require("../middlewares/auth");
 
@@ -77,5 +78,9 @@ router
   .post(protect, createSignatureRequest);
 
 router.route("/:companyId/getNotifications").get(protect, getNotifications);
+
+router
+  .route("/:companyId/getOrganizationChart")
+  .get(protect, getOrganizationChart);
 
 module.exports = router;
