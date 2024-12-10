@@ -1003,3 +1003,95 @@ exports.getNotifications = asyncHandler(async (req, res, next) => {
     data: notifications,
   });
 });
+
+exports.getOrganizationChart = asyncHandler(async (req, res, next) => {
+  const { companyId } = req.params;
+  const userId = req.user.id;
+
+  const user = await User.findOne({
+    _id: userId,
+    "companies.company": companyId,
+  });
+
+  if (!user) {
+    return next(new ErrorResponse("User is not part of this company", 401));
+  }
+
+  const ownerRole = await Role.findOne({ name: "owner" });
+  if (!ownerRole) {
+    return next(new ErrorResponse("Owner role not found", 404));
+  }
+
+  // Find the owner of the company
+  const ownerUser = await User.findOne({
+    "companies.company": companyId,
+    "companies.role": ownerRole._id,
+  });
+
+  if (!ownerUser) {
+    return next(new ErrorResponse("Owner not found for this company", 404));
+  }
+
+  // Retrieve the owner's profile ID
+  const ownerProfileId = ownerUser.companies.find((c) =>
+    c.company.equals(companyId)
+  ).profile;
+
+  if (!ownerProfileId) {
+    return next(
+      new ErrorResponse("Owner's profile not found for this company", 404)
+    );
+  }
+
+  const totalEmployees = await EmployeeProfile.countDocuments({
+    company: companyId,
+  });
+
+  const buildHierarchy = async (reportsTo, processedEmployees = new Set()) => {
+    // Step 4.1: Find employees who report to the given reportsTo
+    const employees = await EmployeeProfile.find({
+      company: companyId,
+      "jobInformation.reportsTo": reportsTo,
+    });
+
+    // Step 4.2: Prevent infinite recursion by checking if an employee has already been processed
+    const employeeHierarchy = await Promise.all(
+      employees.map(async (employee) => {
+        // Skip if this employee has already been processed
+        if (processedEmployees.has(employee._id.toString())) {
+          return null; // Skip this employee
+        }
+
+        // Add employee to the set of processed employees
+        processedEmployees.add(employee._id.toString());
+
+        // Step 4.3: Find subordinates of the current employee
+        const subordinates = await buildHierarchy(
+          employee._id,
+          processedEmployees
+        );
+
+        return {
+          id: employee._id,
+          name: `${employee.firstName} ${employee.lastName}`,
+          jobTitle: employee.jobInformation?.[0]?.jobTitle || "N/A",
+          image: employee.image || "", // If available
+          reportsTo: employee.jobInformation?.[0]?.reportsTo || null,
+          subordinates: subordinates,
+        };
+      })
+    );
+
+    // Step 4.4: Filter out any null values (due to skipping already processed employees)
+    return employeeHierarchy.filter(Boolean);
+  };
+
+  // Step 5: Start building the hierarchy from the owner's profile
+  const hierarchy = await buildHierarchy(ownerProfileId);
+
+  res.status(200).json({
+    success: true,
+    message: "Organization chart retrieved successfully",
+    data: hierarchy,
+  });
+});
