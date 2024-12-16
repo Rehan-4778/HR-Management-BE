@@ -10,10 +10,13 @@ const {
   forgetPassword,
   resetPassword,
 } = require("../controllers/auth");
-// const { protect } = require("../middlewares/auth");
+const { protect } = require("../middlewares/auth");
 
 router.route("/register").post(register);
-router.route("/:domain/login").post(login);
+router.route("/login").post(login);
+router.route("/selectcompany").post(protect, selectCompany);
+router.route("/addEmployee").post(addEmployee);
+router.route("/logout").get(logout);
 // router.route("/me").get(protect, getMe);
 // router.route("/updatedetails").put(protect, updateDetails);
 // router.route("/updatepassword").put(protect, updatePassword);
