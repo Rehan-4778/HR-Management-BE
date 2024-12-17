@@ -6,6 +6,7 @@ const asyncHandler = require("../middlewares/async");
 const EmployeeProfile = require("../models/EmployeeProfile");
 const TimeOffRequest = require("../models/TimeOffRequest");
 const LeavePolicy = require("../models/LeavePolicy");
+const Holiday = require("../models/Holiday");
 
 // description         request time off
 // route               POST /api/v1/timeOff/:employeeId/request-time-off
@@ -59,6 +60,60 @@ exports.requestTimeOff = asyncHandler(async (req, res, next) => {
   res.status(201).json({
     success: true,
     data: timeOffRequest,
+  });
+});
+
+// description         delete time off request
+// route               DELETE /api/v1/timeOff/:employeeId/delete-time-off/:requestId
+// access              Private
+
+exports.deleteTimeOffRequest = asyncHandler(async (req, res, next) => {
+  const { employeeId, requestId } = req.params;
+  const { companyId } = req.body;
+
+  const userId = req.user.id;
+
+  console.log(req.user.id, "-- userId");
+
+  const user = await User.findOne({
+    _id: userId,
+    "companies.company": companyId,
+  });
+  if (!user) {
+    return next(new ErrorResponse("User is not part of this company", 401));
+  }
+
+  const employee = await EmployeeProfile.findOne({
+    employeeId,
+    company: companyId,
+  });
+  if (!employee) {
+    return next(new ErrorResponse("Employee not found", 404));
+  }
+
+  const userProfile = user.companies.find((c) =>
+    c.company.equals(companyId)
+  ).profile;
+
+  if (!userProfile.equals(employee._id)) {
+    return next(
+      new ErrorResponse("You are not authorized to delete this request", 401)
+    );
+  }
+
+  const timeOffRequest = await TimeOffRequest.findOne({
+    _id: requestId,
+    employee: employee._id,
+  });
+  if (!timeOffRequest) {
+    return next(new ErrorResponse("Time-off request not found", 404));
+  }
+
+  await timeOffRequest.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: "Time-off request deleted successfully",
   });
 });
 
@@ -379,6 +434,15 @@ exports.getTimeOffRequests = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("You are not part of this company", 401));
   }
 
+  const userProfile = user.companies.find((c) =>
+    c.company.equals(companyId)
+  ).profile;
+
+  const userEmployeeProfile = await EmployeeProfile.findOne({
+    _id: userProfile,
+    company: companyId,
+  });
+
   const employee = await EmployeeProfile.findOne({
     employeeId,
     company: companyId,
@@ -396,17 +460,23 @@ exports.getTimeOffRequests = asyncHandler(async (req, res, next) => {
     )) || [];
 
   const scheduled = timeOffRequests.filter(
-    (request) => request.endDate >= currentDate
+    (request) => request.startDate >= currentDate
   );
   const history = timeOffRequests.filter(
-    (request) => request.endDate < currentDate
+    (request) => request.startDate < currentDate
   );
+
+  const holidayList = await Holiday.find({
+    companyId,
+  });
 
   res.status(200).json({
     success: true,
     data: {
       scheduled,
       history,
+      holidayList,
+      isAllowedToDelete: userEmployeeProfile._id.equals(employee._id),
     },
   });
 });
